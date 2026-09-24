@@ -14,7 +14,7 @@ h1{font-size:22px;margin:0 0 8px}
 </head>
 <body>
 <h1>REPN · แอดมิน</h1>
-<p id="st">วาง anon key แล้วกดบันทึกและทดสอบ</p>
+<p id="st">เชื่อมแล้ว สามารถส่งทรัพย์ได้</p>
 <div class="card">
 <label>Project URL</label>
 <input id="url" value="https://qxebmvacglridoqyjoeb.supabase.co"/>
@@ -55,11 +55,11 @@ async function pull(){
 }
 async function pushDemo(){
   if(!anon()){toast("วาง anon key ก่อน");return}
-  var row={title:"ที่ดินตัวอย่าง บางนา",listing_type:"SALE",property_type:"ที่ดิน",owner_name:"คุณสมชาย",sale_price:10000000,location_zone:"บางนา",facebook_post_url:"local://mobile-demo-"+Date.now(),status:"PENDING_VERIFY"};
+  var row={title:"ที่ดินตัวอย่าง บางนา",listing_type:"SALE",property_type:"ที่ดิน",sale_price:10000000,location_zone:"บางนา",facebook_post_url:"local://mobile-demo-"+Date.now(),status:"PENDING_VERIFY"};
   try{
     var res=await fetch(base()+"/rest/v1/properties",{method:"POST",headers:headers(),body:JSON.stringify(row)});
     var txt=await res.text();
-    toast(res.ok?"ส่งทรัพย์ตัวอย่างขึ้นฐานแล้ว":txt.slice(0,200));
+    toast(res.ok?"ส่งทรัพย์ตัวอย่างขึ้นฐานแล้ว":txt.slice(0,220));
     if(res.ok) pull();
   }catch(e){toast("เคลืออ: "+e.message)}
 }
