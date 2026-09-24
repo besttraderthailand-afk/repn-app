@@ -8,7 +8,6 @@
 body{font-family:sans-serif;background:#0c1014;color:#f4ead3;margin:0;padding:16px}
 input,textarea,button{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid #2a3642;background:#0f151b;color:#f4ead3;font:inherit;box-sizing:border-box}
 button{background:#c9a227;color:#1a1408;font-weight:700}
-button.ghost{background:transparent;color:#f4ead3}
 button.bad{background:#5a2a2a;color:#f0c0c0}
 .rowbtns{display:flex;gap:8px}
 .rowbtns button{flex:1}
@@ -62,13 +61,10 @@ async function pull(){
     if(!res.ok){toast(txt.slice(0,200));return}
     var data=JSON.parse(txt);
     var box=document.getElementById("list");
-    if(!data.length){box.innerHTML="<div class=card>ตารางว่าง</div>";toast("ตารางว่าง");return}
+    if(!data.length){box.innerHTML="<div class=card>ตารางว่าง</div>";return}
     box.innerHTML=data.map(function(r){
-      var pending=r.status==="PENDING_VERIFY";
       return "<div class=card data-id=\""+r.id+"\"><span class=\"tag "+tagClass(r.status)+"\">"+r.status+"</span><h3>"+(r.title||"-")+"</h3><p>"+(r.property_type||"")+" · "+(r.location_zone||"-")+"<br>"+(r.sale_price||0)+" บาท</p>"+
-        (pending?"<div class=rowbtns><button type=button class=okbtn>อนุมัติ / Approve</button><button type=button class=\"bad no\">Reject</button></div>":
-          (r.status==="PUBLISHED"?"<p>โชว์หน้าบ้านแล้ว</p>":""))+
-        "</div>";
+        "<div class=rowbtns><button type=button class=okbtn>อนุมัติ</button><button type=button class=\"bad no\">Reject</button></div></div>";
     }).join("");
     box.querySelectorAll(".okbtn").forEach(function(b){b.onclick=function(){setStatus(b.closest(".card").getAttribute("data-id"),"PUBLISHED")}});
     box.querySelectorAll(".no").forEach(function(b){b.onclick=function(){setStatus(b.closest(".card").getAttribute("data-id"),"REJECTED")}});
@@ -81,7 +77,7 @@ async function setStatus(id,status){
     var res=await fetch(base()+"/rest/v1/properties?id=eq."+id,{method:"PATCH",headers:headers(),body:JSON.stringify({status:status})});
     var txt=await res.text();
     if(!res.ok){toast(txt.slice(0,220));return}
-    toast(status==="PUBLISHED"?"อนุมัติแล้ว พร้อมโชว์หน้าบ้าน":"ปฏิเสธแล้ว");
+    toast(status==="PUBLISHED"?"อนุมัติแล้ว":"Reject แล้ว");
     pull();
   }catch(e){toast(e.message)}
 }
