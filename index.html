@@ -8,23 +8,30 @@
 body{font-family:sans-serif;background:#0c1014;color:#f4ead3;margin:0;padding:16px}
 input,textarea,button{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid #2a3642;background:#0f151b;color:#f4ead3;font:inherit;box-sizing:border-box}
 button{background:#c9a227;color:#1a1408;font-weight:700}
+button.ghost{background:transparent;color:#f4ead3}
+button.bad{background:#5a2a2a;color:#f0c0c0}
+.rowbtns{display:flex;gap:8px}
+.rowbtns button{flex:1}
 .card{background:#1a232c;padding:14px;border-radius:14px;margin:10px 0}
+.tag{display:inline-block;font-size:12px;padding:3px 8px;border-radius:99px;background:#332614;color:#f0c27a;margin-bottom:6px}
+.tag.ok{background:#163328;color:#7ee0b3}
+.tag.bad{background:#3a1b1b;color:#f0a0a0}
 h1{font-size:22px;margin:0 0 8px}
 </style>
 </head>
 <body>
-<h1>REPN · แอดมิน</h1>
-<p id="st">เชื่อมแล้ว สามารถส่งทรัพย์ได้</p>
+<h1>REPN · Inbox</h1>
+<p id="st">วาง anon key แล้วดึงทรัพย์</p>
 <div class="card">
 <label>Project URL</label>
 <input id="url" value="https://qxebmvacglridoqyjoeb.supabase.co"/>
 <label>anon key</label>
-<textarea id="key" rows="5" placeholder="eyJ..."></textarea>
+<textarea id="key" rows="4" placeholder="eyJ..."></textarea>
 <button type="button" id="b1">บันทึกและทดสอบ</button>
-<button type="button" id="b2">ดึงทรัพย์จากฐานข้อมูล</button>
-<button type="button" id="b3">ส่งทรัพย์ตัวอย่างขึ้นฐาน</button>
+<button type="button" id="b2">ดึงคิวทรัพย์</button>
+<button type="button" id="b3">ส่งทรัพย์ตัวอย่าง</button>
 </div>
-<div class="card" id="list">ยังไม่มีรายการ</div>
+<div id="list"></div>
 <script>
 function toast(m){document.getElementById("st").textContent=m}
 function base(){return document.getElementById("url").value.trim().replace(/\/$/,"").replace(/\/rest\/v1.*/,"")}
@@ -33,13 +40,19 @@ function headers(){
   var k=anon();
   return {apikey:k, Authorization:"Bearer "+k, "Content-Type":"application/json", Prefer:"return=representation"};
 }
+function tagClass(s){
+  if(s==="PUBLISHED") return "ok";
+  if(s==="REJECTED") return "bad";
+  return "";
+}
 async function test(){
   if(!anon()){toast("วาง anon key ก่อน");return}
   try{
     var res=await fetch(base()+"/rest/v1/properties?select=id&limit=1",{headers:headers()});
     var txt=await res.text();
-    toast(res.ok?("เชื่อมแล้ว รหัส "+res.status):("ไม่ผ่าน "+res.status+" "+txt.slice(0,180)));
-  }catch(e){toast("เคลืออ: "+e.message)}
+    toast(res.ok?("เชื่อมแล้ว "+res.status):txt.slice(0,180));
+    if(res.ok) pull();
+  }catch(e){toast(e.message)}
 }
 async function pull(){
   if(!anon()){toast("วาง anon key ก่อน");return}
@@ -48,10 +61,29 @@ async function pull(){
     var txt=await res.text();
     if(!res.ok){toast(txt.slice(0,200));return}
     var data=JSON.parse(txt);
-    if(!data.length){toast("ตารางว่าง");list.textContent="ตารางว่าง";return}
-    list.innerHTML=data.map(function(r){return "<div><b>"+(r.title||"-")+"</b><br>"+(r.property_type||"")+" "+(r.location_zone||"")+"<br>"+r.status+" · "+(r.sale_price||0)+"</div><hr>"}).join("");
+    var box=document.getElementById("list");
+    if(!data.length){box.innerHTML="<div class=card>ตารางว่าง</div>";toast("ตารางว่าง");return}
+    box.innerHTML=data.map(function(r){
+      var pending=r.status==="PENDING_VERIFY";
+      return "<div class=card data-id=\""+r.id+"\"><span class=\"tag "+tagClass(r.status)+"\">"+r.status+"</span><h3>"+(r.title||"-")+"</h3><p>"+(r.property_type||"")+" · "+(r.location_zone||"-")+"<br>"+(r.sale_price||0)+" บาท</p>"+
+        (pending?"<div class=rowbtns><button type=button class=okbtn>อนุมัติ / Approve</button><button type=button class=\"bad no\">Reject</button></div>":
+          (r.status==="PUBLISHED"?"<p>โชว์หน้าบ้านแล้ว</p>":""))+
+        "</div>";
+    }).join("");
+    box.querySelectorAll(".okbtn").forEach(function(b){b.onclick=function(){setStatus(b.closest(".card").getAttribute("data-id"),"PUBLISHED")}});
+    box.querySelectorAll(".no").forEach(function(b){b.onclick=function(){setStatus(b.closest(".card").getAttribute("data-id"),"REJECTED")}});
     toast("ดึงแล้ว "+data.length+" รายการ");
-  }catch(e){toast("เคลืออ: "+e.message)}
+  }catch(e){toast(e.message)}
+}
+async function setStatus(id,status){
+  toast("กำลังอัปเดต "+status+"...");
+  try{
+    var res=await fetch(base()+"/rest/v1/properties?id=eq."+id,{method:"PATCH",headers:headers(),body:JSON.stringify({status:status})});
+    var txt=await res.text();
+    if(!res.ok){toast(txt.slice(0,220));return}
+    toast(status==="PUBLISHED"?"อนุมัติแล้ว พร้อมโชว์หน้าบ้าน":"ปฏิเสธแล้ว");
+    pull();
+  }catch(e){toast(e.message)}
 }
 async function pushDemo(){
   if(!anon()){toast("วาง anon key ก่อน");return}
@@ -59,9 +91,9 @@ async function pushDemo(){
   try{
     var res=await fetch(base()+"/rest/v1/properties",{method:"POST",headers:headers(),body:JSON.stringify(row)});
     var txt=await res.text();
-    toast(res.ok?"ส่งทรัพย์ตัวอย่างขึ้นฐานแล้ว":txt.slice(0,220));
+    toast(res.ok?"ส่งทรัพย์ตัวอย่างแล้ว":txt.slice(0,220));
     if(res.ok) pull();
-  }catch(e){toast("เคลืออ: "+e.message)}
+  }catch(e){toast(e.message)}
 }
 document.getElementById("b1").onclick=test;
 document.getElementById("b2").onclick=pull;
