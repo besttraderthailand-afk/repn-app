@@ -3,23 +3,25 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>REPN Admin</title>
+<title>REPN Escrow</title>
 <style>
 body{font-family:sans-serif;background:#0c1014;color:#f4ead3;margin:0;padding:16px}
 input,textarea,button{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid #2a3642;background:#0f151b;color:#f4ead3;font:inherit;box-sizing:border-box}
 button{background:#c9a227;color:#1a1408;font-weight:700}
 button.bad{background:#5a2a2a;color:#f0c0c0}
-.rowbtns{display:flex;gap:8px}
-.rowbtns button{flex:1}
+button.ok{background:#1d5c45;color:#d6ffe9}
+.rowbtns{display:flex;gap:8px;flex-wrap:wrap}
+.rowbtns button{flex:1;min-width:30%}
 .card{background:#1a232c;padding:14px;border-radius:14px;margin:10px 0}
-.tag{display:inline-block;font-size:12px;padding:3px 8px;border-radius:99px;background:#332614;color:#f0c27a;margin-bottom:6px}
+.tag{display:inline-block;font-size:12px;padding:3px 8px;border-radius:99px;background:#332614;color:#f0c27a;margin:0 4px 6px 0}
 .tag.ok{background:#163328;color:#7ee0b3}
 .tag.bad{background:#3a1b1b;color:#f0a0a0}
 h1{font-size:22px;margin:0 0 8px}
+small{color:#8b9aab}
 </style>
 </head>
 <body>
-<h1>REPN · Inbox</h1>
+<h1>REPN · เอสโครว์ 3%</h1>
 <p id="st">วาง anon key แล้วดึงทรัพย์</p>
 <div class="card">
 <label>Project URL</label>
@@ -27,10 +29,11 @@ h1{font-size:22px;margin:0 0 8px}
 <label>anon key</label>
 <textarea id="key" rows="4" placeholder="eyJ..."></textarea>
 <button type="button" id="b1">บันทึกและทดสอบ</button>
-<button type="button" id="b2">ดึงคิวทรัพย์</button>
+<button type="button" id="b2">ดึงทรัพย์ + เอสโครว์</button>
 <button type="button" id="b3">ส่งทรัพย์ตัวอย่าง</button>
 </div>
 <div id="list"></div>
+<div id="esc"></div>
 <script>
 function toast(m){document.getElementById("st").textContent=m}
 function base(){return document.getElementById("url").value.trim().replace(/\/$/,"").replace(/\/rest\/v1.*/,"")}
@@ -39,57 +42,89 @@ function headers(){
   var k=anon();
   return {apikey:k, Authorization:"Bearer "+k, "Content-Type":"application/json", Prefer:"return=representation"};
 }
-function tagClass(s){
-  if(s==="PUBLISHED") return "ok";
-  if(s==="REJECTED") return "bad";
-  return "";
+function baht(n){return Number(n||0).toLocaleString("th-TH")}
+function parts(price){
+  var p=Number(price||0), tot=p*0.03, firm=p*0.005, pool=p*0.025;
+  return {
+    price:p, tot:tot, firm:firm, pool:pool,
+    rows:[
+      {role:"COMPANY",pct:0.5,amount:firm},
+      {role:"LISTING",pct:0.625,amount:pool*0.25},
+      {role:"SELLING",pct:0.875,amount:pool*0.35},
+      {role:"SPONSOR",pct:0.25,amount:pool*0.10},
+      {role:"UNILEVEL",pct:0.625,amount:pool*0.25},
+      {role:"LEADERSHIP",pct:0.125,amount:pool*0.05}
+    ]
+  };
+}
+async function api(path, opt){
+  var res=await fetch(base()+"/rest/v1/"+path, Object.assign({headers:headers()}, opt||{}));
+  var txt=await res.text();
+  return {ok:res.ok, status:res.status, txt:txt, data: txt? (function(){try{return JSON.parse(txt)}catch(e){return txt}})():null};
 }
 async function test(){
   if(!anon()){toast("วาง anon key ก่อน");return}
-  try{
-    var res=await fetch(base()+"/rest/v1/properties?select=id&limit=1",{headers:headers()});
-    var txt=await res.text();
-    toast(res.ok?("เชื่อมแล้ว "+res.status):txt.slice(0,180));
-    if(res.ok) pull();
-  }catch(e){toast(e.message)}
+  var r=await api("properties?select=id&limit=1");
+  toast(r.ok?("เชื่อมแล้ว "+r.status):r.txt.slice(0,180));
+  if(r.ok) pull();
 }
 async function pull(){
   if(!anon()){toast("วาง anon key ก่อน");return}
-  try{
-    var res=await fetch(base()+"/rest/v1/properties?select=*&order=created_at.desc&limit=50",{headers:headers()});
-    var txt=await res.text();
-    if(!res.ok){toast(txt.slice(0,200));return}
-    var data=JSON.parse(txt);
-    var box=document.getElementById("list");
-    if(!data.length){box.innerHTML="<div class=card>ตารางว่าง</div>";return}
-    box.innerHTML=data.map(function(r){
-      return "<div class=card data-id=\""+r.id+"\"><span class=\"tag "+tagClass(r.status)+"\">"+r.status+"</span><h3>"+(r.title||"-")+"</h3><p>"+(r.property_type||"")+" · "+(r.location_zone||"-")+"<br>"+(r.sale_price||0)+" บาท</p>"+
-        "<div class=rowbtns><button type=button class=okbtn>อนุมัติ</button><button type=button class=\"bad no\">Reject</button></div></div>";
-    }).join("");
-    box.querySelectorAll(".okbtn").forEach(function(b){b.onclick=function(){setStatus(b.closest(".card").getAttribute("data-id"),"PUBLISHED")}});
-    box.querySelectorAll(".no").forEach(function(b){b.onclick=function(){setStatus(b.closest(".card").getAttribute("data-id"),"REJECTED")}});
-    toast("ดึงแล้ว "+data.length+" รายการ");
-  }catch(e){toast(e.message)}
+  var r=await api("properties?select=*&order=created_at.desc&limit=30");
+  if(!r.ok){toast(r.txt.slice(0,220));return}
+  var box=document.getElementById("list");
+  box.innerHTML=r.data.map(function(x){
+    var c=parts(x.sale_price);
+    return "<div class=card data-id=\""+x.id+"\" data-price=\""+x.sale_price+"\"><span class=tag>"+x.status+"</span><h3>"+(x.title||"-")+"</h3><p>"+baht(x.sale_price)+" บาท<br><small>คอม 3% = "+baht(c.tot)+" · กอง 2.5% = "+baht(c.pool)+"</small></p>"+
+      "<div class=rowbtns><button type=button class=okbtn>อนุมัติ</button><button type=button class=\"bad no\">Reject</button><button type=button class=ok lock>ล็อกเอสโครว์</button></div></div>";
+  }).join("")||"<div class=card>ไม่มีทรัพย์</div>";
+  box.querySelectorAll(".okbtn").forEach(function(b){b.onclick=function(){setStatus(b.closest(".card").dataset.id,"PUBLISHED")}});
+  box.querySelectorAll(".no").forEach(function(b){b.onclick=function(){setStatus(b.closest(".card").dataset.id,"REJECTED")}});
+  box.querySelectorAll(".lock").forEach(function(b){b.onclick=function(){lockEscrow(b.closest(".card").dataset.id,b.closest(".card").dataset.price)}});
+  toast("ดึงทรัพย์ "+r.data.length+" รายการ");
+  pullEscrow();
 }
 async function setStatus(id,status){
-  toast("กำลังอัปเดต "+status+"...");
-  try{
-    var res=await fetch(base()+"/rest/v1/properties?id=eq."+id,{method:"PATCH",headers:headers(),body:JSON.stringify({status:status})});
-    var txt=await res.text();
-    if(!res.ok){toast(txt.slice(0,220));return}
-    toast(status==="PUBLISHED"?"อนุมัติแล้ว":"Reject แล้ว");
-    pull();
-  }catch(e){toast(e.message)}
+  var r=await api("properties?id=eq."+id,{method:"PATCH",body:JSON.stringify({status:status})});
+  toast(r.ok?status:r.txt.slice(0,200));
+  if(r.ok) pull();
+}
+async function lockEscrow(pid, price){
+  var c=parts(price);
+  if(!c.price){toast("ไม่มีราคา ล็อกไม่ได้");return}
+  toast("กำลังล็อกเอสโครว์...");
+  var acc=await api("escrow_accounts",{method:"POST",body:JSON.stringify({
+    property_id:pid, deal_price:c.price, commission_rate:3,
+    total_commission:c.tot, company_share:c.firm, affiliate_pool:c.pool,
+    status:"FUNDED", funded_at:new Date().toISOString(), note:"ล็อกจากหน้าแอดมิน"
+  })});
+  if(!acc.ok){toast(acc.txt.slice(0,240));return}
+  var id=acc.data[0].id;
+  for(var i=0;i<c.rows.length;i++){
+    var s=c.rows[i];
+    var rr=await api("escrow_splits",{method:"POST",body:JSON.stringify({escrow_id:id, role:s.role, share_pct:s.pct, amount:Math.round(s.amount*100)/100, status:"LOCKED"})});
+    if(!rr.ok){toast(rr.txt.slice(0,240));return}
+  }
+  await api("escrow_events",{method:"POST",body:JSON.stringify({escrow_id:id, event_type:"FUNDED", payload:{price:c.price,total:c.tot}})});
+  await api("properties?id=eq."+pid,{method:"PATCH",body:JSON.stringify({status:"RESERVED"})});
+  toast("ล็อกคอม "+baht(c.tot)+" บาทแล้ว");
+  pull();
+}
+async function pullEscrow(){
+  var r=await api("escrow_accounts?select=*,escrow_splits(*)&order=created_at.desc&limit=20");
+  var box=document.getElementById("esc");
+  if(!r.ok){box.innerHTML="<div class=card>ยังอ่านเอสโครว์ไม่ได้: "+r.txt.slice(0,180)+"</div>";return}
+  if(!r.data.length){box.innerHTML="<div class=card>ยังไม่มีตู้เอสโครว์</div>";return}
+  box.innerHTML="<h2>ตู้ที่ล็อกอยู่</h2>"+r.data.map(function(e){
+    var lines=(e.escrow_splits||[]).map(function(s){return s.role+" · "+baht(s.amount)+" · "+s.status}).join("<br>");
+    return "<div class=card><span class=tag ok>"+e.status+"</span><p>ราคาดีล "+baht(e.deal_price)+"<br>คอมล็อก "+baht(e.total_commission)+"</p><small>"+lines+"</small></div>";
+  }).join("");
 }
 async function pushDemo(){
-  if(!anon()){toast("วาง anon key ก่อน");return}
   var row={title:"ที่ดินตัวอย่าง บางนา",listing_type:"SALE",property_type:"ที่ดิน",sale_price:10000000,location_zone:"บางนา",facebook_post_url:"local://mobile-demo-"+Date.now(),status:"PENDING_VERIFY"};
-  try{
-    var res=await fetch(base()+"/rest/v1/properties",{method:"POST",headers:headers(),body:JSON.stringify(row)});
-    var txt=await res.text();
-    toast(res.ok?"ส่งทรัพย์ตัวอย่างแล้ว":txt.slice(0,220));
-    if(res.ok) pull();
-  }catch(e){toast(e.message)}
+  var r=await api("properties",{method:"POST",body:JSON.stringify(row)});
+  toast(r.ok?"ส่งทรัพย์ตัวอย่างแล้ว":r.txt.slice(0,200));
+  if(r.ok) pull();
 }
 document.getElementById("b1").onclick=test;
 document.getElementById("b2").onclick=pull;
