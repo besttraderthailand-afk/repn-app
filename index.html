@@ -4,10 +4,9 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>REPN Admin</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 body{font-family:sans-serif;background:#0c1014;color:#f4ead3;margin:0;padding:16px}
-input,textarea,select,button{width:100%;padding:10px;margin:6px 0;border-radius:10px;border:1px solid #2a3642;background:#0f151b;color:#f4ead3;font:inherit;box-sizing:border-box}
+input,textarea,button{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid #2a3642;background:#0f151b;color:#f4ead3;font:inherit;box-sizing:border-box}
 button{background:#c9a227;color:#1a1408;font-weight:700}
 .card{background:#1a232c;padding:14px;border-radius:14px;margin:10px 0}
 h1{font-size:22px;margin:0 0 8px}
@@ -15,58 +14,58 @@ h1{font-size:22px;margin:0 0 8px}
 </head>
 <body>
 <h1>REPN · แอดมิน</h1>
-<p id="st">พร้อมต่อ Supabase</p>
+<p id="st">วาง anon key แล้วกดบันทึกและทดสอบ</p>
 <div class="card">
 <label>Project URL</label>
 <input id="url" value="https://qxebmvacglridoqyjoeb.supabase.co"/>
 <label>anon key</label>
-<textarea id="key" rows="4" placeholder="eyJ..."></textarea>
-<button onclick="save()">บันทึกและทดสอบ</button>
-<button onclick="pull()">ดึงทรัพย์จากฐานข้อมูล</button>
-<button onclick="pushDemo()">ส่งทรัพย์ตัวอย่างขึ้นฐาน</button>
+<textarea id="key" rows="5" placeholder="eyJ..."></textarea>
+<button type="button" id="b1">บันทึกและทดสอบ</button>
+<button type="button" id="b2">ดึงทรัพย์จากฐานข้อมูล</button>
+<button type="button" id="b3">ส่งทรัพย์ตัวอย่างขึ้นฐาน</button>
 </div>
 <div class="card" id="list">ยังไม่มีรายการ</div>
 <script>
-const SB="repn_supabase";
-let sb=null;
-function toast(m){st.textContent=m}
-function cfg(){try{return JSON.parse(localStorage.getItem(SB)||"{}")}catch(e){return{}}}
-function init(){
-  const c=cfg(); if(c.url) url.value=c.url; if(c.key) key.value=c.key;
-  if(c.url&&c.key){sb=supabase.createClient(c.url,c.key); test()}
-}
-async function save(){
-  localStorage.setItem(SB,JSON.stringify({url:url.value.trim(),key:key.value.trim()}));
-  sb=supabase.createClient(url.value.trim(),key.value.trim());
-  await test();
+function toast(m){document.getElementById("st").textContent=m}
+function base(){return document.getElementById("url").value.trim().replace(/\/$/,"").replace(/\/rest\/v1.*/,"")}
+function anon(){return document.getElementById("key").value.trim()}
+function headers(){
+  var k=anon();
+  return {apikey:k, Authorization:"Bearer "+k, "Content-Type":"application/json", Prefer:"return=representation"};
 }
 async function test(){
-  if(!sb) return toast("ใส่คีย์ก่อน");
-  const {error}=await sb.from("properties").select("id").limit(1);
-  toast(error?("ต่อได้แต่ตาราง: "+error.message):"เชื่อมแล้ว อ่าน properties ได้");
+  if(!anon()){toast("วาง anon key ก่อน");return}
+  try{
+    var res=await fetch(base()+"/rest/v1/properties?select=id&limit=1",{headers:headers()});
+    var txt=await res.text();
+    toast(res.ok?("เชื่อมแล้ว รหัส "+res.status):("ไม่ผ่าน "+res.status+" "+txt.slice(0,180)));
+  }catch(e){toast("เคลืออ: "+e.message)}
 }
 async function pull(){
-  if(!sb) return toast("บันทึกคีย์ก่อน");
-  const {data,error}=await sb.from("properties").select("*").order("created_at",{ascending:false}).limit(50);
-  if(error) return toast(error.message);
-  if(!data||!data.length) return toast("ตารางว่าง");
-  list.innerHTML=data.map(r=>`<div><b>${r.title||"-"}</b><br>${r.property_type||""} ${r.location_zone||""}<br>${r.status} · ${r.sale_price||0}</div><hr>`).join("");
-  toast("ดึงแล้ว "+data.length+" รายการ");
+  if(!anon()){toast("วาง anon key ก่อน");return}
+  try{
+    var res=await fetch(base()+"/rest/v1/properties?select=*&order=created_at.desc&limit=50",{headers:headers()});
+    var txt=await res.text();
+    if(!res.ok){toast(txt.slice(0,200));return}
+    var data=JSON.parse(txt);
+    if(!data.length){toast("ตารางว่าง");list.textContent="ตารางว่าง";return}
+    list.innerHTML=data.map(function(r){return "<div><b>"+(r.title||"-")+"</b><br>"+(r.property_type||"")+" "+(r.location_zone||"")+"<br>"+r.status+" · "+(r.sale_price||0)+"</div><hr>"}).join("");
+    toast("ดึงแล้ว "+data.length+" รายการ");
+  }catch(e){toast("เคลืออ: "+e.message)}
 }
 async function pushDemo(){
-  if(!sb) return toast("บันทึกคีย์ก่อน");
-  const row={
-    title:"ที่ดินตัวอย่าง บางนา จากมือถือ",
-    listing_type:"SALE", property_type:"ที่ดิน", owner_name:"คุณสมชาย",
-    sale_price:10000000, location_zone:"บางนา",
-    facebook_post_url:"local://mobile-demo-"+Date.now(),
-    status:"PENDING_VERIFY"
-  };
-  const {error}=await sb.from("properties").insert(row);
-  toast(error?error.message:"ส่งทรัพย์ตัวอย่างขึ้นฐานแล้ว");
-  if(!error) pull();
+  if(!anon()){toast("วาง anon key ก่อน");return}
+  var row={title:"ที่ดินตัวอย่าง บางนา",listing_type:"SALE",property_type:"ที่ดิน",owner_name:"คุณสมชาย",sale_price:10000000,location_zone:"บางนา",facebook_post_url:"local://mobile-demo-"+Date.now(),status:"PENDING_VERIFY"};
+  try{
+    var res=await fetch(base()+"/rest/v1/properties",{method:"POST",headers:headers(),body:JSON.stringify(row)});
+    var txt=await res.text();
+    toast(res.ok?"ส่งทรัพย์ตัวอย่างขึ้นฐานแล้ว":txt.slice(0,200));
+    if(res.ok) pull();
+  }catch(e){toast("เคลืออ: "+e.message)}
 }
-init();
+document.getElementById("b1").onclick=test;
+document.getElementById("b2").onclick=pull;
+document.getElementById("b3").onclick=pushDemo;
 </script>
 </body>
 </html>
