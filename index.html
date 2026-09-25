@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>REPN Escrow</title>
+<title>REPN Inbox</title>
 <style>
 body{font-family:sans-serif;background:#0c1014;color:#f4ead3;margin:0;padding:16px}
-input,textarea,button{width:100%;padding:14px;margin:6px 0;border-radius:10px;border:1px solid #2a3642;background:#0f151b;color:#f4ead3;font:inherit;box-sizing:border-box}
+input,textarea,button{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid #2a3642;background:#0f151b;color:#f4ead3;font:inherit;box-sizing:border-box}
 button{background:#c9a227;color:#1a1408;font-weight:700}
 button.bad{background:#5a2a2a;color:#f0c0c0}
 button.lock{background:#1d5c45;color:#d6ffe9}
@@ -19,14 +19,19 @@ small{color:#8b9aab}
 </style>
 </head>
 <body>
-<h1>REPN · เอสโครว์</h1>
-<p id="st">วาง anon key ก่อน แล้วกดบันทึก</p>
+<h1>REPN · วางโพสต์กลุ่ม</h1>
+<p id="st">ยังไม่ต้องสมัคร Apify วางข้อความจากกลุ่มแล้วกดส่งคิว</p>
 <div class="card">
 <input id="url" value="https://qxebmvacglridoqyjoeb.supabase.co"/>
-<textarea id="key" rows="4" placeholder="anon key eyJ..."></textarea>
-<button type="button" id="b1">1) บันทึกและดึงทรัพย์</button>
-<button type="button" class="lock" id="bLock">2) ล็อกเอสโครว์ 3% รายการแรก</button>
-<button type="button" id="b3">ส่งทรัพย์ตัวอย่าง</button>
+<textarea id="key" rows="3" placeholder="anon key eyJ..."></textarea>
+<button type="button" id="b1">บันทึกและดึงคิว</button>
+</div>
+<div class="card">
+<label>ลิงก์โพสต์ (ถ้ามี)</label>
+<input id="fburl" placeholder="https://facebook.com/groups/..."/>
+<label>วางข้อความโพสต์ทั้งก้อน</label>
+<textarea id="raw" rows="7" placeholder="ขายที่ดิน บางนา 200 ตร.ว. 10 ล้าน..."></textarea>
+<button type="button" id="bPaste">ส่งเข้าคิว PENDING_VERIFY</button>
 </div>
 <div id="list"></div>
 <div id="esc"></div>
@@ -36,6 +41,64 @@ function base(){return document.getElementById("url").value.trim().replace(/\/$/
 function anon(){return document.getElementById("key").value.trim()}
 function headers(){var k=anon();return {apikey:k,Authorization:"Bearer "+k,"Content-Type":"application/json",Prefer:"return=representation"}}
 function baht(n){return Number(n||0).toLocaleString("th-TH")}
+async function api(path,opt){
+  var res=await fetch(base()+"/rest/v1/"+path,Object.assign({headers:headers()},opt||{}));
+  var txt=await res.text(); var data=null; try{data=txt?JSON.parse(txt):null}catch(e){data=txt}
+  return {ok:res.ok,txt:txt,data:data};
+}
+function parsePost(text, link){
+  var t=text||"";
+  var type="อื่น";
+  if(/ที่ดิน|วงผัง|ริมทาบ/.test(t)) type="ที่ดิน";
+  else if(/คอนโด|คอนโดมิเนียม/.test(t)) type="คอนโด";
+  else if(/ทาวน์|ทาวน์โฮม|ทาวน์เฮ้าส์/.test(t)) type="ทาวน์โฮม";
+  else if(/บ้านเดี่ยว|บ้านพัก|บ้าน/.test(t)) type="บ้าน";
+  var listing=/เช่า|ให้เช่า|รายเดือน/.test(t)?"RENT":"SALE";
+  var price=0, m=t.match(/(\d[\d,]*(?:\.\d+)?)\s*(ล้าน|ลบ\.?)/);
+  if(m) price=parseFloat(m[1].replace(/,/g,""))*1000000;
+  else { m=t.match(/(\d[\d,]{4,})\s*บาท/); if(m) price=parseFloat(m[1].replace(/,/g,"")); }
+  var zone="";
+  var z=t.match(/(?:ที่|ทำเล|เขต|อำเภอ|บาง|ราษฎร)([^\n,]{2,24})/);
+  if(z) zone=z[0].replace(/\s+/g," ").slice(0,40);
+  var title=(t.split(/\n/)[0]||type).slice(0,80);
+  var fb=link||("local://paste-"+Date.now());
+  return {title:title, listing_type:listing, property_type:type, sale_price: listing==="SALE"?price:0, rent_price_monthly: listing==="RENT"?price:0, location_zone:zone, facebook_post_url:fb, status:"PENDING_VERIFY"};
+}
+async function pasteIn(){
+  if(!anon()){toast("วาง anon key ก่อน");return}
+  var raw=document.getElementById("raw").value.trim();
+  if(!raw){toast("วางข้อความโพสต์ก่อน");return}
+  var row=parsePost(raw, document.getElementById("fburl").value.trim());
+  toast("กำลังส่งคิว...");
+  var r=await api("properties",{method:"POST",body:JSON.stringify(row)});
+  if(!r.ok){toast(r.txt.slice(0,240));return}
+  toast("เข้าคิวแล้ว: "+row.property_type+" "+baht(row.sale_price||row.rent_price_monthly));
+  document.getElementById("raw").value="";
+  pull();
+}
+async function pull(){
+  if(!anon()){toast("วาง anon key ก่อน");return}
+  var r=await api("properties?select=*&order=created_at.desc&limit=30");
+  if(!r.ok){toast(r.txt.slice(0,220));return}
+  var box=document.getElementById("list");
+  box.innerHTML=(r.data||[]).map(function(x){
+    return "<div class=card><span class=tag>"+x.status+"</span><h3>"+(x.title||"-")+"</h3><p>"+(x.property_type||"")+" · "+(x.location_zone||"-")+"<br>"+baht(x.sale_price)+" บาท</p>"+
+      "<div class=rowbtns><button type=button data-act=pub data-id=\""+x.id+"\">อนุมัติ</button><button type=button class=bad data-act=rej data-id=\""+x.id+"\">Reject</button></div>"+
+      "<button type=button class=lock data-act=esc data-id=\""+x.id+"\" data-price=\""+x.sale_price+"\">ล็อกเอสโครว์ 3%</button></div>";
+  }).join("");
+  box.onclick=function(e){
+    var t=e.target.closest("button"); if(!t) return;
+    var act=t.getAttribute("data-act"); if(!act) return;
+    if(act==="pub") setStatus(t.getAttribute("data-id"),"PUBLISHED");
+    if(act==="rej") setStatus(t.getAttribute("data-id"),"REJECTED");
+    if(act==="esc") lockEscrow(t.getAttribute("data-id"),t.getAttribute("data-price"));
+  };
+  toast("คิว "+(r.data||[]).length+" รายการ");
+}
+async function setStatus(id,status){
+  var r=await api("properties?id=eq."+id,{method:"PATCH",body:JSON.stringify({status:status})});
+  toast(r.ok?status:r.txt.slice(0,200)); if(r.ok) pull();
+}
 function parts(price){
   var p=Number(price||0), tot=p*0.03, firm=p*0.005, pool=p*0.025;
   return {price:p,tot:tot,firm:firm,pool:pool,rows:[
@@ -47,86 +110,21 @@ function parts(price){
     {role:"LEADERSHIP",pct:0.125,amount:pool*0.05}
   ]};
 }
-async function api(path,opt){
-  var res=await fetch(base()+"/rest/v1/"+path,Object.assign({headers:headers()},opt||{}));
-  var txt=await res.text();
-  var data=null; try{data=txt?JSON.parse(txt):null}catch(e){data=txt}
-  return {ok:res.ok,txt:txt,data:data};
-}
-var lastProps=[];
-async function pull(){
-  if(!anon()){toast("วาง anon key ก่อน");return}
-  var r=await api("properties?select=*&order=created_at.desc&limit=30");
-  if(!r.ok){toast(r.txt.slice(0,220));return}
-  lastProps=r.data||[];
-  var box=document.getElementById("list");
-  box.innerHTML=lastProps.map(function(x){
-    var c=parts(x.sale_price);
-    return "<div class=card><span class=tag>"+x.status+"</span><h3>"+(x.title||"-")+"</h3><p>"+baht(x.sale_price)+" บาท<br><small>คอม 3% = "+baht(c.tot)+"</small></p>"+
-      "<div class=rowbtns><button type=button data-act=pub data-id=\""+x.id+"\">อนุมัติ</button><button type=button class=bad data-act=rej data-id=\""+x.id+"\">Reject</button></div>"+
-      "<button type=button class=lock data-act=esc data-id=\""+x.id+"\" data-price=\""+x.sale_price+"\">ล็อกเอสโครว์ 3%</button></div>";
-  }).join("")||"<div class=card>ไม่มีทรัพย์</div>";
-  box.onclick=function(e){
-    var t=e.target.closest("button"); if(!t) return;
-    var act=t.getAttribute("data-act"); if(!act) return;
-    if(act==="pub") setStatus(t.getAttribute("data-id"),"PUBLISHED");
-    if(act==="rej") setStatus(t.getAttribute("data-id"),"REJECTED");
-    if(act==="esc") lockEscrow(t.getAttribute("data-id"),t.getAttribute("data-price"));
-  };
-  toast("พบ "+lastProps.length+" รายการ กดปุ่มขียวล็อกเอสโครว์");
-  pullEscrow();
-}
-async function setStatus(id,status){
-  var r=await api("properties?id=eq."+id,{method:"PATCH",body:JSON.stringify({status:status})});
-  toast(r.ok?status:r.txt.slice(0,200)); if(r.ok) pull();
-}
 async function lockEscrow(pid,price){
-  var c=parts(price);
-  if(!c.price){toast("ไม่มีราคา ล็อกไม่ได้");return}
-  toast("กำลังล็อกคอม "+baht(c.tot)+" บาท");
-  var acc=await api("escrow_accounts",{method:"POST",body:JSON.stringify({
-    property_id:pid,deal_price:c.price,commission_rate:3,
-    total_commission:Math.round(c.tot*100)/100,
-    company_share:Math.round(c.firm*100)/100,
-    affiliate_pool:Math.round(c.pool*100)/100,
-    status:"FUNDED",funded_at:new Date().toISOString(),note:"mobile lock"
-  })});
+  var c=parts(price); if(!c.price){toast("ไม่มีราคา");return}
+  var acc=await api("escrow_accounts",{method:"POST",body:JSON.stringify({property_id:pid,deal_price:c.price,commission_rate:3,total_commission:Math.round(c.tot*100)/100,company_share:Math.round(c.firm*100)/100,affiliate_pool:Math.round(c.pool*100)/100,status:"FUNDED",funded_at:new Date().toISOString()})});
   if(!acc.ok){toast(acc.txt.slice(0,240));return}
-  var id=acc.data && acc.data[0] && acc.data[0].id;
-  if(!id){toast("สร้างตู้แล้วแต่ไม่ได้ id");return}
+  var id=acc.data[0].id;
   for(var i=0;i<c.rows.length;i++){
     var s=c.rows[i];
     var rr=await api("escrow_splits",{method:"POST",body:JSON.stringify({escrow_id:id,role:s.role,share_pct:s.pct,amount:Math.round(s.amount*100)/100,status:"LOCKED"})});
     if(!rr.ok){toast(rr.txt.slice(0,240));return}
   }
-  await api("escrow_events",{method:"POST",body:JSON.stringify({escrow_id:id,event_type:"FUNDED",payload:{total:c.tot}})});
   await api("properties?id=eq."+pid,{method:"PATCH",body:JSON.stringify({status:"RESERVED"})});
-  toast("ล็อกเอสโครว์ "+baht(c.tot)+" บาทแล้ว");
-  pull();
-}
-async function lockFirst(){
-  if(!lastProps.length){await pull()}
-  if(!lastProps.length){toast("ยังไม่มีทรัพย์ กดส่งทรัพย์ตัวอย่างก่อน");return}
-  lockEscrow(lastProps[0].id,lastProps[0].sale_price);
-}
-async function pullEscrow(){
-  var r=await api("escrow_accounts?select=*,escrow_splits(*)&order=created_at.desc&limit=20");
-  var box=document.getElementById("esc");
-  if(!r.ok){box.innerHTML="<div class=card>"+r.txt.slice(0,180)+"</div>";return}
-  if(!r.data.length){box.innerHTML="<div class=card>ยังไม่มีตู้เอสโครว์</div>";return}
-  box.innerHTML="<h2>ตู้ที่ล็อกอยู่</h2>"+r.data.map(function(e){
-    var lines=(e.escrow_splits||[]).map(function(s){return s.role+" · "+baht(s.amount)}).join("<br>");
-    return "<div class=card><span class=tag>"+e.status+"</span><p>ดีล "+baht(e.deal_price)+" · ล็อก "+baht(e.total_commission)+"</p><small>"+lines+"</small></div>";
-  }).join("");
-}
-async function pushDemo(){
-  var row={title:"ที่ดินตัวอย่าง บางนา",listing_type:"SALE",property_type:"ที่ดิน",sale_price:10000000,location_zone:"บางนา",facebook_post_url:"local://esc-"+Date.now(),status:"PENDING_VERIFY"};
-  var r=await api("properties",{method:"POST",body:JSON.stringify(row)});
-  toast(r.ok?"ส่งทรัพย์ตัวอย่างแล้ว":r.txt.slice(0,200)); if(r.ok) pull();
+  toast("ล็อกเอสโครว์ "+baht(c.tot)); pull();
 }
 document.getElementById("b1").onclick=pull;
-document.getElementById("bLock").onclick=lockFirst;
-document.getElementById("b3").onclick=pushDemo;
+document.getElementById("bPaste").onclick=pasteIn;
 </script>
 </body>
 </html>
